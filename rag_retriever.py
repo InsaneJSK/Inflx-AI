@@ -19,25 +19,43 @@ nltk.download("omw-1.4", quiet=True)
 lemmatizer = WordNetLemmatizer()
 KB_PATH = "knowledge_base.json"
 
-
 def load_kb():
-    with open(KB_PATH, "r") as f:
+    """Load the knowledge base from a JSON file."""
+    with open(KB_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
 def clean_and_lemmatize(text: str):
+    """
+    Lowercase, remove punctuation, and lemmatize the input text.
+    :param text: Input text string
+    :type text: str
+    """
     text = text.lower().strip()
     text = text.translate(str.maketrans("", "", string.punctuation))
     return [lemmatizer.lemmatize(tok) for tok in text.split()]
 
 
 def format_plan(plan_name: str, kb):
+    """
+    Format the plan details from the knowledge base.    
+    :param plan_name: Name of the plan (e.g., "Basic Plan" or "Pro Plan")
+    :type plan_name: str
+    :param kb: Knowledge base dictionary
+    """
     plan_data = kb["AutoStream Pricing & Features"][plan_name]
     lines = [f"{k}: {v}" for k, v in plan_data.items()]
     return f"{plan_name} details:\n" + "\n".join(lines)
 
 
 def retrieve_from_kb(user_query: str) -> str:
+    """
+    Retrieve relevant information from the knowledge base based on the user query.    
+    :param user_query: Input user query string
+    :type user_query: str
+    :return: Retrieved information string
+    :rtype: str
+    """
     kb = load_kb()
     lemmas = clean_and_lemmatize(user_query)
 
