@@ -4,11 +4,16 @@ Classifies intents into exactly one of three classes:
 - "product_inquiry"
 - "high_intent_lead"
 """
+import re
 from google import genai
 from dotenv import load_dotenv
 load_dotenv()
 
 client = genai.Client()
+
+def contain_word(text: str, word: str) -> bool:
+    """Checks if a word is present in the text as a whole word."""
+    return re.search(rf'\b{re.escape(word)}\b', text) is not None
 
 def classify_with_gemini(user_message: str) -> str:
     """
@@ -21,14 +26,16 @@ def classify_with_gemini(user_message: str) -> str:
     """
 
     prompt = f"""
-    Classify the user's intent into exactly one of these:
+    You are an intent classification model for a SaaS support assistant. The user messages can be of three types:
+    1. greeting - User is saying hello or greeting.
+    2. product_inquiry - User is asking about product features, pricing, or plans.
+    3. high_intent_lead - User is expressing strong interest in signing up, purchasing, or subscribing. This might be as simple as asking to "get started" or "sign up". Sharing personal information like name or email also indicates high intent.
+    Classify the user's intent into exactly one of these and respond with only that one word label.
     - greeting
     - product_inquiry
     - high_intent_lead
 
     User message: "{user_message}"
-
-    Respond with only one word label.
     """
     response = client.models.generate_content(model="gemini-2.5-flash", contents=prompt)
     return response.text.strip().lower() if response.text else "unknown"
@@ -60,7 +67,15 @@ def classify_intent(user_message: str) -> str:
         "i want to try",
         "ready to",
         "create account",
-        "register"
+        "register",
+        "enroll",
+        "my name is",
+        "youtube",
+        "linkedin"
+        "instagram",
+        "facebook",
+        "twitter",
+        "email"
     ]
     inquiry_keywords = [
         "price",
@@ -78,11 +93,11 @@ def classify_intent(user_message: str) -> str:
     ]
 
     # high-intent  >  product inquiry  >  greeting (priority order)
-    if any(word in text for word in high_intent_keywords):
+    if any(contain_word(text, word) for word in high_intent_keywords):
         return "high_intent_lead"
-    if any(word in text for word in inquiry_keywords):
+    if any(contain_word(text, word) for word in inquiry_keywords):
         return "product_inquiry"
-    if any(word in text for word in greeting_keywords):
+    if any(contain_word(text, word) for word in greeting_keywords):
         return "greeting"
     return classify_with_gemini(user_message)
 
@@ -94,7 +109,8 @@ if __name__ == "__main__":
         "What are your features", #product_inquiry
         "Hello, I would like to know more about your product.", #product_inquiry
         "Good morning, how can I get started?", #high_intent_lead
-        "Hola Amigo!" #ambiguous, fallback to gemini
+        "Hola Amigo!", #ambiguous, fallback to gemini
+        "I am Jaspreet, i think it might be good for my linkedin"
     ]
 
     for msg in test_messages:

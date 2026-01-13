@@ -1,123 +1,243 @@
-"""
-Conversation agent for AutoStream assistant.
+from typing import Optional
+from pydantic import BaseModel, Field
+from langgraph.graph import StateGraph, END
+from langgraph.checkpoint.memory import MemorySaver
+from google import genai
 
-Responsibilities:
-- intent detection
-- RAG retrieval
-- lead data collection
-- tool execution
-"""
-
-from state_manager import ConversationState
+from intent_classifier import classify_intent
 from rag_retriever import retrieve_from_kb
+from state_manager import ConversationState
 from tools import mock_lead_capture
 
+from dotenv import load_dotenv
+load_dotenv()
 
-def detect_intent(user_query: str) -> str:
-    """
-    Very lightweight rule-based intent detector.
-    """
-
-    q = user_query.lower()
-
-    if any(x in q for x in ["price", "plan", "feature", "quality", "limit", "refund", "support"]):
-        return "product_query"
-
-    if any(x in q for x in ["sign up", "interested", "buy", "purchase", "subscribe", "demo", "contact"]):
-        return "lead_generation"
-
-    return "chitchat"
+client = genai.Client()
 
 
-def update_lead_fields(state: ConversationState, user_query: str):
-    """
-    Try to update name/email/platform from user input.
-    Extremely naive but fine for assignment.
-    """
-
-    text = user_query.strip()
-
-    # email
-    if "@" in text and "." in text and state.email is None:
-        state.email = text
-        return
-
-    # platform
-    if any(p in text.lower() for p in ["youtube", "instagram", "tiktok", "facebook"]) and state.platform is None:
-        state.platform = text
-        return
-
-    # name (fallback: any short text without @)
-    if state.name is None and "@" not in text:
-        state.name = text
+# =========================
+# LangGraph State Schema
+# =========================
+class AgentState(BaseModel):
+    user_message: str = ""
+    conversation: ConversationState = Field(default_factory=ConversationState)
+    rag_result: Optional[str] = None
+    reply: Optional[str] = None
 
 
-def agent_step(state: ConversationState, user_query: str) -> str:
-    """
-    Main loop of agent logic.
-    """
+# =========================
+# ---- NODES ---------------
+# =========================
 
-    # add user message
-    state.add_turn("user", user_query)
+def intent_node(state: AgentState):
+    conv = state.conversation
+    user_message = state.user_message
 
-    # detect intent only if not already collecting lead
-    if not state.collecting_lead:
-        intent = detect_intent(user_query)
-        state.last_intent = intent
-    else:
-        intent = "lead_generation"
+    intent = classify_intent(user_message)
+    conv.last_intent = intent
+    conv.add_turn("User", user_message)
 
-    # -------- LEAD GENERATION MODE --------
-    if intent == "lead_generation":
+    return state
 
-        state.collecting_lead = True
-        update_lead_fields(state, user_query)
 
-        missing = state.missing_lead_fields()
 
-        # if done -> call tool
-        if len(missing) == 0:
-            result = mock_lead_capture(state.name, state.email, state.platform)
-            state.reset_lead_capture()
-            state.add_turn("assistant", "Thanks! Your details have been submitted successfully.")
-            return (
-                "🎉 Thanks! Your details are submitted.\n"
-                "Our team will reach out shortly."
-            )
+def rag_node(state: AgentState):
+    answer = retrieve_from_kb(state.user_message)
+    state.rag_result = answer
+    return state
 
-        # otherwise ask next missing field
-        next_field = missing[0]
-        prompts = {
-            "name": "Great! Can I have your full name?",
-            "email": "Thanks. What is your email address?",
-            "platform": "Which platform do you primarily create content for?"
-        }
 
-        reply = prompts[next_field]
-        state.add_turn("assistant", reply)
-        return reply
 
-    # -------- PRODUCT QUERY (RAG) --------
-    elif intent == "product_query":
-        answer = retrieve_from_kb(user_query)
-        state.add_turn("assistant", answer)
-        return answer
+# =========================
+# LLM lead extraction node
+# =========================
 
-    # -------- SMALL TALK FALLBACK --------
-    else:
-        reply = "Hi! I can help with plans, pricing, features, refunds, or help you sign up."
-        state.add_turn("assistant", reply)
-        return reply
+def lead_collection_node(state: AgentState):
+    conv = state.conversation
+    user_msg = state.user_message
 
+    conv.collecting_lead = True
+
+    # ---- LLM extraction ----
+    extraction_prompt = f"""
+You extract structured lead details from free-form text.
+
+Extract ONLY the following fields if explicitly mentioned:
+- name
+- email
+- platform of interest (e.g., LinkedIn, YouTube, Instagram, WhatsApp, Website)
+
+Rules:
+- Do NOT invent missing fields
+- If a field is missing, output null
+- If multiple options exist, choose the clearest one
+- Platform can be generic social media or "website"
+
+Return JSON ONLY in the form:
+{{
+ "name": <string or null>,
+ "email": <string or null>,
+ "platform": <string or null>
+}}
+
+User message:
+\"\"\"{user_msg}\"\"\"
+
+Conversation so far (may contain previous info):
+Name: {conv.name}
+Email: {conv.email}
+Platform: {conv.platform}
+"""
+
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=extraction_prompt
+    )
+
+    import json
+
+    try:
+        extracted = json.loads(response.text)
+    except Exception:
+        extracted = {"name": None, "email": None, "platform": None}
+
+    # ---- update state only if missing ----
+    if conv.name is None and extracted.get("name"):
+        conv.name = extracted["name"]
+
+    if conv.email is None and extracted.get("email"):
+        conv.email = extracted["email"]
+
+    if conv.platform is None and extracted.get("platform"):
+        conv.platform = extracted["platform"]
+
+    # ---- check remaining ----
+    missing = conv.missing_lead_fields()
+
+    if missing:
+        # ask only for missing items
+        ask = "Great! To complete your signup, I still need your "
+        ask += ", ".join(missing)
+        ask += "."
+        state.reply = ask
+        return state
+
+    # ---- all details present → capture lead ----
+    out = mock_lead_capture(conv.name, conv.email, conv.platform)
+    conv.reset_lead_capture()
+
+    state.reply = (
+        f"🎉 Lead captured successfully!\n\n{out}\n\nOur team will reach out soon."
+    )
+
+    return state
+
+
+
+def llm_response_node(state: AgentState):
+    conv = state.conversation
+
+    prompt = f"""
+You are AutoStream SaaS support assistant.
+
+Conversation history:
+{conv.history}
+
+User said: "{state.user_message}"
+
+Detected intent: {conv.last_intent}
+
+If rag_result exists, use ONLY that information and don't hallucinate.
+RAG result:
+{state.rag_result}
+
+Write a friendly reply.
+"""
+
+    response = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt
+    )
+
+    text = response.text.strip()
+
+    conv.add_turn("Assistant", text)
+    state.reply = text
+
+    return state
+
+
+
+# =========================
+# ---- ROUTER --------------
+# =========================
+
+def router(state: AgentState):
+    intent = state.conversation.last_intent
+
+    if intent == "greeting":
+        return "llm"
+
+    if intent == "product_inquiry":
+        return "rag"
+
+    if intent == "high_intent_lead":
+        return "lead"
+
+    return "llm"
+
+
+
+# =========================
+# ---- GRAPH BUILD ---------
+# =========================
+
+graph = StateGraph(AgentState)
+
+graph.add_node("intent", intent_node)
+graph.add_node("rag", rag_node)
+graph.add_node("lead", lead_collection_node)
+graph.add_node("llm", llm_response_node)
+
+graph.set_entry_point("intent")
+
+graph.add_conditional_edges(
+    "intent",
+    router,
+    {
+        "rag": "rag",
+        "lead": "lead",
+        "llm": "llm",
+    },
+)
+
+graph.add_edge("rag", "llm")
+graph.add_edge("lead", "llm")
+graph.add_edge("llm", END)
+
+memory = MemorySaver()
+app = graph.compile(checkpointer=memory)
+
+
+# =========================
+# ---- DEMO ---------------
+# =========================
 
 if __name__ == "__main__":
-
-    state = ConversationState()
+    state = AgentState()
+    thread_id = "demo-thread"
 
     while True:
-        user = input("You: ")
-        if user.lower() in ["exit", "quit"]:
+        user_input = input("You: ")
+
+        if user_input.lower() in ["exit", "quit"]:
             break
 
-        response = agent_step(state, user)
-        print("Assistant:", response)
+        state.user_message = user_input
+
+        result = app.invoke(
+            state,
+            config={"configurable": {"thread_id": thread_id}},
+        )
+
+        print("Agent:", result["reply"])
