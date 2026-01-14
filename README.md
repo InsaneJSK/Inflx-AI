@@ -1,5 +1,5 @@
 # 🤖 Inflx: Social-to-Lead Agentic Workflow
-
+Deployed at: [Streamlit](https://inflx-ai.streamlit.app/) | Demo Video: [Demo]()
 ## 1. Project Overview
 
 Inflx is an AI-powered conversational agent designed to convert social media interactions into qualified business leads. Unlike simple chatbots, this agent can:

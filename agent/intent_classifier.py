@@ -62,7 +62,6 @@ def classify_intent(user_message: str) -> str:
     label, confidence = classify_intent_local(text)
     if confidence < THRESHOLD:
         label = classify_with_gemini(text)
-    print(label)
     return label
 
 if __name__ == "__main__":

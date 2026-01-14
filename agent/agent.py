@@ -111,8 +111,7 @@ def lead_collection_node(state: AgentState):
     conv.name = keep(conv.name, extracted.get("name"))
     conv.email = keep(conv.email, extracted.get("email"))
     conv.platform = keep(conv.platform, extracted.get("platform"))
-    print(f"Name: {conv.name}, Email: {conv.email}, Platform: {conv.platform}")
-
+    
     # ---- check remaining ----
     missing = conv.missing_lead_fields()
 

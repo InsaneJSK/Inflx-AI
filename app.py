@@ -10,7 +10,7 @@ st.set_page_config(page_title="Inflx: AutoStream Support", page_icon="🤖", lay
 
 st.markdown(
     """
-    <h1 style='text-align: center;'>🤖 Smart Support Assistant</h1>
+    <h1 style='text-align: center;'>Inflx-AI Support Assistant</h1>
     <p style='text-align: center;'>
     I can help, answer questions, and capture leads when you're interested.
     </p>

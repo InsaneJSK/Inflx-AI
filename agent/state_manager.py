@@ -4,6 +4,7 @@ Tracks conversation context including chat history, detected intents,
 and lead capture details. Pydantic based
 """
 import os
+import json
 from typing import List, Optional, ClassVar
 from pydantic import BaseModel, Field, EmailStr
 from langchain_groq import ChatGroq
@@ -36,7 +37,14 @@ class MultiLLM:
                 contents=prompt
             )
         except Exception as e:
-            print(f"[LLM fallback] Gemini failed: {e}. Using Groq.")
+            try:
+                err_json = json.loads(str(e))
+                print(f"[LLM fallback] Gemini failed:")
+                print(str(e))
+            except:
+                print(f"Error: {e}")
+            finally:
+                print("Using Groq")
             return self.groq.invoke(prompt)
 
 class Turn(BaseModel):
