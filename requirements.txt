@@ -3,3 +3,6 @@ python-dotenv
 nltk
 langgraph
 pydantic[email]
+scikit-learn
+streamlit
+langchain_groq

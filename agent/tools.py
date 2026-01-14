@@ -5,7 +5,7 @@ Currently includes:
 - mock lead capture tool
 """
 
-def mock_lead_capture(name: str, email: str, platform: str) -> str:
+def mock_lead_capture(name: str, email: str, platform: str) -> dict:
     """
     Simulates sending captured lead details to CRM/webhook.
     For assignment demo: we only print + return string.
@@ -16,15 +16,19 @@ def mock_lead_capture(name: str, email: str, platform: str) -> str:
     Returns:
         Confirmation string
     """
-    result = f"""Lead captured successfully!
-    Name: {name}
-    Email: {email}
-    Platform: {platform}"""
+    if not (name and email and platform):
+        raise ValueError("All fields (name, email, platform) must be provided")
+    result = {
+    "status": "success",
+    "name": name,
+    "email": email,
+    "platform": platform
+    }
     print(result)
     return result
 
 if __name__ == "__main__":
-    from state_manager import ConversationState
+    from agent.state_manager import ConversationState
 
     s = ConversationState()
     s.collecting_lead = True

@@ -8,67 +8,36 @@ Features:
 """
 
 import json
-import string
-import nltk
-from nltk.stem import WordNetLemmatizer
+from agent.intent_classifier import clean_text
 
-# NLTK setup
-nltk.download("wordnet", quiet=True)
-nltk.download("omw-1.4", quiet=True)
-
-lemmatizer = WordNetLemmatizer()
-KB_PATH = "knowledge_base.json"
+KB_PATH = "data/knowledge_base.json"
 
 def load_kb():
     """Load the knowledge base from a JSON file."""
     with open(KB_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
 
-
-def clean_and_lemmatize(text: str):
-    """
-    Lowercase, remove punctuation, and lemmatize the input text.
-    :param text: Input text string
-    :type text: str
-    """
-    text = text.lower().strip()
-    text = text.translate(str.maketrans("", "", string.punctuation))
-    return [lemmatizer.lemmatize(tok) for tok in text.split()]
-
-
 def format_plan(plan_name: str, kb):
-    """
-    Format the plan details from the knowledge base.    
-    :param plan_name: Name of the plan (e.g., "Basic Plan" or "Pro Plan")
-    :type plan_name: str
-    :param kb: Knowledge base dictionary
-    """
+    """Format the plan details from the knowledge base."""
     plan_data = kb["AutoStream Pricing & Features"][plan_name]
     lines = [f"{k}: {v}" for k, v in plan_data.items()]
     return f"{plan_name} details:\n" + "\n".join(lines)
 
-
 def retrieve_from_kb(user_query: str) -> str:
-    """
-    Retrieve relevant information from the knowledge base based on the user query.    
-    :param user_query: Input user query string
-    :type user_query: str
-    :return: Retrieved information string
-    :rtype: str
-    """
+    """Retrieve relevant information from the knowledge base based on the user query."""
     kb = load_kb()
-    lemmas = clean_and_lemmatize(user_query)
+    text = clean_text(user_query)
 
     # ---------------- detect explicit plan ----------------
     plan = None
-    if "basic" in lemmas:
+    if "basic" in text:
         plan = "Basic Plan"
-    elif "pro" in lemmas:
+    elif "pro" in text:
         plan = "Pro Plan"
 
     # ---------------- detect generic plan language ----------------
     generic_plan_terms = {"plan", "plans", "pricing", "subscription"}
-    generic_plan_mentioned = any(term in lemmas for term in generic_plan_terms)
+    generic_plan_mentioned = any(term in text for term in generic_plan_terms)
 
     # ---------------- attribute detection ----------------
     attribute_map = {
@@ -84,7 +53,7 @@ def retrieve_from_kb(user_query: str) -> str:
         "support": "Company Policies",
     }
 
-    detected_attributes = {attribute_map[l] for l in lemmas if l in attribute_map}
+    detected_attributes = {attribute_map[t] for t in text if t in attribute_map}
 
     # ---------------- policy handling ----------------
     if "Company Policies" in detected_attributes:
@@ -112,7 +81,6 @@ def retrieve_from_kb(user_query: str) -> str:
         "AutoStream offers Basic and Pro plans. "
         "Ask about price, limits, quality, features, refunds, or support for more details."
     )
-
 
 if __name__ == "__main__":
     test_queries = [
