@@ -5,7 +5,7 @@ Trains a classifier for intent detecting using tfidf and logistic regression
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
-from .intent_data import training_data
+from models.intent_data import training_data
 
 texts = [x[0] for x in training_data]
 labels = [x[1] for x in training_data]

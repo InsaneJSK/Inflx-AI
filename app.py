@@ -1,6 +1,10 @@
+"""
+UI for Inflx Agent
+Uses streamlit for the frontend
+"""
+
 import streamlit as st
 from agent.agent import app, AgentState
-from agent.state_manager import ConversationState
 
 st.set_page_config(page_title="Inflx: AutoStream Support", page_icon="🤖", layout="centered")
 

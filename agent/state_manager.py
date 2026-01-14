@@ -3,37 +3,41 @@ State manager for AutoStream assistant.
 Tracks conversation context including chat history, detected intents,
 and lead capture details. Pydantic based
 """
+import os
 from typing import List, Optional, ClassVar
 from pydantic import BaseModel, Field, EmailStr
 from langchain_groq import ChatGroq
 from google.genai import Client
 from dotenv import load_dotenv
-import os
 
 load_dotenv()
 
-gemini_client = Client()
-groq_client = ChatGroq(
+gemini = Client()
+groq = ChatGroq(
     model="llama-3.1-8b-instant",
     api_key=os.getenv("GROQ_API_KEY")
 )
 
 class MultiLLM:
-    def __init__(self, gemini_client=gemini_client, groq_client=groq_client):
+    """
+    Switches between gemini and groq
+    Prefers gemini, toggles to groq if rate limited
+    """
+    def __init__(self, gemini_client=gemini, groq_client=groq):
         self.gemini = gemini_client
         self.groq = groq_client
 
     def invoke(self, prompt):
+        """Common calling function for both llms"""
         try:
             # try Gemini first
-            return self.groq.invoke(prompt)
-
-        except Exception as e:
-            print(f"[LLM fallback] Gemini failed: {e}. Using Groq.")
             return self.gemini.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=prompt
             )
+        except Exception as e:
+            print(f"[LLM fallback] Gemini failed: {e}. Using Groq.")
+            return self.groq.invoke(prompt)
 
 class Turn(BaseModel):
     """Stores the turn-wise messages for memory"""

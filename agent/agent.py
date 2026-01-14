@@ -1,10 +1,16 @@
+"""
+Complete Agent architecture for Inflx AI
+Connects the llm to the intent_classifier, rag_retriever, tools and more
+"""
+
+import re
+import json
 from typing import Optional
 from pydantic import BaseModel, Field
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
-import json, re
-from agent.intent_classifier import classify_intent
 from data.rag_retriever import retrieve_from_kb
+from agent.intent_classifier import classify_intent
 from agent.state_manager import ConversationState
 from agent.tools import mock_lead_capture
 from agent.state_manager import MultiLLM
@@ -14,16 +20,18 @@ llm = MultiLLM()
 
 # LangGraph State Schema
 class AgentState(BaseModel):
+    """The Agent Class"""
     user_message: str = ""
     conversation: ConversationState = Field(default_factory=ConversationState)
     rag_result: Optional[str] = None
     reply: Optional[str] = None
     class Config:
+        """Configurations for AgentState"""
         arbitrary_types_allowed = True
 
 # NODES
-
 def intent_node(state: AgentState):
+    """Node responsible for classifying intent"""
     conv = state.conversation
     user_message = state.user_message
 
@@ -34,6 +42,7 @@ def intent_node(state: AgentState):
     return state
 
 def rag_node(state: AgentState):
+    """Node responsible for RAG retrieval"""
     answer = retrieve_from_kb(state.user_message)
     if not answer or not answer.strip():
         state.rag_result = None
@@ -44,15 +53,14 @@ def rag_node(state: AgentState):
 
     return state
 
-# LLM lead extraction node
-
 def lead_collection_node(state: AgentState):
+    """Node responsible for extracting information and calling the tool"""
     conv = state.conversation
     user_msg = state.user_message
     history_text = "\n".join(f"{turn.role}: {turn.content}" for turn in conv.history)
 
     conv.collecting_lead = True
-    
+
     # ---- LLM extraction ----
     extraction_prompt = f"""
     You extract structured lead details from free-form text.
@@ -85,10 +93,6 @@ def lead_collection_node(state: AgentState):
     Platform: {conv.platform}
 """
 
-    # response = client.models.generate_content(
-    #     model="gemini-2.5-flash",
-    #     contents=extraction_prompt
-    # )
     response = llm.invoke(extraction_prompt)
     raw = response.text.strip()
     raw = re.sub(r"```.*?```", "", raw, flags=re.DOTALL).strip()
@@ -132,18 +136,21 @@ def lead_collection_node(state: AgentState):
     conv.add_turn("Assistant", state.reply)
     return state
 
-
-
 def llm_response_node(state: AgentState):
+    """Node responsible for handling llm calls except for extraction"""
     conv = state.conversation
     history_text = "\n".join(f"{turn.role}: {turn.content}" for turn in conv.history)
     if getattr(conv, "rag_used", False):
-        rag_section = f"Use the following official knowledge base info and keep your answer grounded to it:\n{state.rag_result}\n"
+        rag_section = f"""
+        Use the following official knowledge base info and keep your answer grounded to it:
+        {state.rag_result}
+        """
     else:
         rag_section = "No reliable info found in the knowledge base. Do NOT invent product details."
     post_lead_note = ""
     if getattr(conv, "lead_just_captured", False):
-        post_lead_note = "NOTE: The user has successfully signed up. Do NOT try to sell again, focus on support and answering."
+        post_lead_note = """NOTE: The user has successfully signed up.
+        Do NOT try to sell again, focus on support and answering."""
     prompt = f"""
     You are AutoStream SaaS support assistant.
 
@@ -165,10 +172,6 @@ def llm_response_node(state: AgentState):
     {post_lead_note}
     """
 
-    # response = client.models.generate_content(
-    #     model="gemini-2.5-flash",
-    #     contents=prompt
-    # )
     response = llm.invoke(prompt)
     text = response.text.strip()
 
@@ -177,16 +180,13 @@ def llm_response_node(state: AgentState):
 
     return state
 
-# =========================
-# ---- ROUTER --------------
-# =========================
-
 def router(state: AgentState):
+    """Router for the graph"""
     conv = state.conversation
 
     if getattr(conv, "collecting_lead", False):
         return "lead"
-    
+
     intent = conv.last_intent
 
     if intent == "greeting":
@@ -202,11 +202,7 @@ def router(state: AgentState):
         return "llm"
     return "llm"
 
-
-
-# =========================
-# ---- GRAPH BUILD ---------
-# =========================
+# GRAPH BUILD
 
 graph = StateGraph(AgentState)
 
@@ -234,14 +230,11 @@ graph.add_edge("llm", END)
 memory = MemorySaver()
 app = graph.compile(checkpointer=memory)
 
-
-# =========================
-# ---- DEMO ---------------
-# =========================
+# Demo
 
 if __name__ == "__main__":
-    state = AgentState()
-    thread_id = "demo-thread"
+    s = AgentState()
+    THREAD_ID = "demo-thread"
 
     while True:
         user_input = input("You: ")
@@ -249,11 +242,11 @@ if __name__ == "__main__":
         if user_input.lower() in ["exit", "quit"]:
             break
 
-        state.user_message = user_input
+        s.user_message = user_input
 
         result = app.invoke(
-            state,
-            config={"configurable": {"thread_id": thread_id}},
+            s,
+            config={"configurable": {"thread_id": THREAD_ID}},
         )
 
         print("Agent:", result["reply"])
