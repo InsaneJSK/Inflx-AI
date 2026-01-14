@@ -1,5 +1,5 @@
 # 🤖 Inflx: Social-to-Lead Agentic Workflow
-Deployed at: [Streamlit](https://inflx-ai.streamlit.app/) | Demo Video: [Demo]()
+Deployed at: [Streamlit](https://inflx-ai.streamlit.app/) | Demo Video: [Demo](https://youtu.be/GFiyL7PWCDU)
 ## 1. Project Overview
 
 Inflx is an AI-powered conversational agent designed to convert social media interactions into qualified business leads. Unlike simple chatbots, this agent can:
@@ -59,7 +59,7 @@ def mock_lead_capture(name, email, platform):
 | LLM                             | `gemini-2.5-flash` with `langchain-groq` (Llama 3.1 Instant) as fallback for rate limits |
 | Conversational Agent            | `LangGraph`                       |
 | Intent Classification            | Custom TfIdf based classifier          |
-| Knowledge Retrieval (RAG)       | Custom module                     |
+| Knowledge Retrieval (RAG)       | Custom module without chunking or embedding since the KB was very small                     |
 | Lead Capture                     | LLM-based extraction + mock function |
 | Frontend                        | `Streamlit`                        |
 | Environment & Config            | `.env`, `python-dotenv`           |
@@ -123,6 +123,8 @@ streamlit run .\app.py
 - **LLM Efficiency**: Only calls the LLM when generating responses or performing structured extraction, minimizing API usage.
 
 ## Screenshots/Demo
+
+[![Inflx-AI-Demo](https://img.youtube.com/vi/GFiyL7PWCDU/0.jpg)](https://www.youtube.com/watch?v=GFiyL7PWCDU)
 
 ### Required Questions
 
